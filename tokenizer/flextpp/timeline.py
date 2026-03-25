@@ -157,23 +157,18 @@ class PatientTimelineTokenizer:
                         raw_data={'drug': row.get('drug'), 'atc_code': row['atc_code']}
                     ))
 
-        # Procedures
+        # Procedures (ICD codes)
+        # Note: procedures_icd only has chartdate (date, no time). Since ICD coding
+        # is typically done after discharge when all care is finished, we use
+        # discharge_time as the safest assumption to avoid time leakage.
         procedures = tables['hosp.procedures_icd']
-        session_procs = procedures[
-            (procedures['hadm_id'] == hadm_id) &
-            (procedures['chartdate'].notna())
-        ].copy()
-        session_procs['chartdate'] = pd.to_datetime(session_procs['chartdate'])
-        session_procs = session_procs[
-            (session_procs['chartdate'] >= admit_time.normalize()) &
-            (session_procs['chartdate'] <= discharge_time.normalize())
-        ]
+        session_procs = procedures[procedures['hadm_id'] == hadm_id].copy()
 
         tokenized_procs = self.procedure_tokenizer._divide_code_into_parts(session_procs)
         for _, row in tokenized_procs.iterrows():
             if pd.notna(row.get('tokenized_version')):
                 events.append(Event(
-                    time=self._to_relative_time(row['chartdate'], admit_time),
+                    time=self._to_relative_time(discharge_time, admit_time),
                     tokens=row['tokenized_version'],
                     event_type='PROC',
                     raw_data={'icd_code': row['icd_code'], 'icd_version': row.get('icd_version')}
